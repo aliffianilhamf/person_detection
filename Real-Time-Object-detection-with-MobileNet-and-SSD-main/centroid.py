@@ -135,9 +135,9 @@ backend_target_pairs = [
 
 # Argumen parser
 ap = argparse.ArgumentParser()
-ap.add_argument("-p", "--prototxt", required=True,
+ap.add_argument("-p", "--prototxt", required=False, default='MobileNetSSD.txt',
     help="path to Caffe 'deploy' prototxt file")
-ap.add_argument("-m", "--model", required=True,
+ap.add_argument("-m", "--model", required=False, default='MobileNetSSD_deploy.caffemodel',
     help="path to Caffe pre-trained model")
 ap.add_argument("-c", "--confidence", type=float, default=0.2,
     help="minimum probability to filter weak detections")
