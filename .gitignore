@@ -174,3 +174,7 @@ face_recognition/face_embeddings.pkl
 
 face_detection/face_detection_yunet_2023mar_int8.onnx
 face_detection/face_detection_yunet_2023mar.onnx
+
+# Additional files
+.idea/
+.vscode/
