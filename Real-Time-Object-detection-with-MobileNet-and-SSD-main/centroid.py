@@ -208,7 +208,8 @@ while True:
     (h, w) = frame.shape[:2]
 
     # Deteksi wajah menggunakan YuNet
-    faces = detector.infer(cv2.resize(frame, (320, 320)))
+    detector.setInputSize((frame.shape[1], frame.shape[0]))
+    faces = detector.infer(frame)
     
     # Deteksi person menggunakan SSDMobileNet
     blob = cv2.dnn.blobFromImage(cv2.resize(frame, (300, 300)),
@@ -241,7 +242,9 @@ while True:
             continue
         
         face_roi = frame[y:y+h, x:x+w]
-        face_embedding = recognizer.infer(face_roi).flatten()
+        face_embedding = recognizer.infer(frame, face).flatten()
+        if face_roi.size == 0 or w < 10 or h < 10:
+            continue
 
         # Lakukan pengenalan wajah
         recognized_label, similarity = recognize_face(face_embedding, known_face_embeddings)
