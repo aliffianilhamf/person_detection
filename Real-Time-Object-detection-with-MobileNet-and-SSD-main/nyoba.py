@@ -110,20 +110,18 @@ def recognize_face(face_embedding,known_face_embeddings):
     recognized_label = "Unknown"
     max_similarity = 0
 
+    if known_face_embeddings is not None:
     # Bandingkan dengan embedding wajah yang sudah dikenal
-    for name, embeddings in known_face_embeddings.items():
-        for known_embedding in embeddings:
-            # similarity = cosine_similarity(face_embedding, known_embedding)
-            similarity = np.dot(face_embedding, known_embedding) / (np.linalg.norm(face_embedding) * np.linalg.norm(known_embedding))            
-            if similarity > max_similarity:
-                max_similarity = similarity
-                recognized_label = name
+        for name, embeddings in known_face_embeddings.items():
+            for known_embedding in embeddings:
+                # similarity = cosine_similarity(face_embedding, known_embedding)
+                similarity = np.dot(face_embedding, known_embedding) / (np.linalg.norm(face_embedding) * np.linalg.norm(known_embedding))            
+                if similarity > max_similarity:
+                    max_similarity = similarity
+                    # recognized_label = name
+                    recognized_label = f"{name} ({similarity:.2f})"
 
-    # Jika similarity melebihi threshold, anggap wajah dikenali
-    if max_similarity >= SIMILARITY_THRESHOLD:
-        return recognized_label, max_similarity
-    else:
-        return "Unknown", max_similarity
+    return recognized_label, max_similarity
 # Valid combinations of backends and targets
 backend_target_pairs = [
     [cv2.dnn.DNN_BACKEND_OPENCV, cv2.dnn.DNN_TARGET_CPU],
@@ -264,13 +262,13 @@ while True:
     current_time = time.time()
     for objectID in list(person_track_times.keys()):
         last_seen = person_track_times[objectID]['last_seen']
-
+        
         # Jika person sudah tidak terdeteksi dalam waktu yang ditentukan (5 menit)
         if current_time - last_seen > TIMEOUT_DURATION:
-            print(f"Person {objectID} keluar ruangan, total waktu: {current_time - person_track_times[objectID]['entry_time']} detik.")
+            print(f"Person {objectID} name : {person_track_times[objectID]['recognized_face']} keluar ruangan, total waktu: {current_time - person_track_times[objectID]['entry_time']} detik.")
             del person_track_times[objectID]
         else:
-            print(f"Person {objectID} masih di dalam ruangan, terakhir terdeteksi {current_time - last_seen} detik yang lalu.")
+            print(f"Person id {objectID} name : {person_track_times[objectID]['recognized_face']} masih di dalam ruangan, terakhir terdeteksi {current_time - last_seen} detik yang lalu.")
 
     cv2.imshow("Frame", frame)
     key = cv2.waitKey(1) & 0xFF
