@@ -1,4 +1,5 @@
 # import necessary packages
+import datetime
 from imutils.video import VideoStream, FPS
 import numpy as np
 import imutils
@@ -25,18 +26,19 @@ class CentroidTracker:
         self.disappeared = OrderedDict()
         self.maxDisappeared = maxDisappeared
 
-    def register(self, centroid):
+    def register(self, centroid, recognized_label):
         # Register a new object with a unique ID
-        self.objects[self.nextObjectID] = centroid
+        self.objects[self.nextObjectID] = (centroid, recognized_label)
         self.disappeared[self.nextObjectID] = 0
         self.nextObjectID += 1
+        
 
     def deregister(self, objectID):
         # Remove the object by ID
         del self.objects[objectID]
         del self.disappeared[objectID]
 
-    def update(self, rects):
+    def update(self, rects, recognized_label = None):
         # If no bounding boxes, increment disappearance counter for all objects
         if len(rects) == 0:
             for objectID in list(self.disappeared.keys()):
@@ -57,11 +59,12 @@ class CentroidTracker:
 
         if len(self.objects) == 0:
             for i in range(0, len(inputCentroids)):
-                self.register(inputCentroids[i])
+                label = recognized_label[0] if recognized_label else None
+                self.register(inputCentroids[i], label)
 
         else:
             objectIDs = list(self.objects.keys())
-            objectCentroids = list(self.objects.values())
+            objectCentroids = [obj[0] for obj in self.objects.values()]
 
             D = dist.cdist(np.array(objectCentroids), inputCentroids)
 
@@ -70,14 +73,22 @@ class CentroidTracker:
 
             usedRows = set()
             usedCols = set()
+            # MAX_DISTANCE_THRESHOLD = 50 
 
             for (row, col) in zip(rows, cols):
                 if row in usedRows or col in usedCols:
                     continue
 
+
+                # distance = D[row, col]
+                # if distance > MAX_DISTANCE_THRESHOLD:  # Define a reasonable distance threshold
+                #     continue
+                
                 objectID = objectIDs[row]
-                self.objects[objectID] = inputCentroids[col]
+                label = recognized_label[0] if recognized_label else None
+                self.objects[objectID] = (inputCentroids[col], label)
                 self.disappeared[objectID] = 0
+                
 
                 usedRows.add(row)
                 usedCols.add(col)
@@ -93,8 +104,10 @@ class CentroidTracker:
                     self.deregister(objectID)
 
             for col in unusedCols:
-                self.register(inputCentroids[col])
-
+                label = recognized_label[0] if recognized_label else None
+                self.register(inputCentroids[col], label)
+            
+            
         return self.objects
 
 # Threshold similarity untuk mengenali wajah
@@ -118,10 +131,9 @@ def recognize_face(face_embedding,known_face_embeddings):
                 similarity = np.dot(face_embedding, known_embedding) / (np.linalg.norm(face_embedding) * np.linalg.norm(known_embedding))            
                 if similarity > max_similarity:
                     max_similarity = similarity
-                    # recognized_label = name
-                    recognized_label = f"{name} ({similarity:.2f})"
+                    recognized_label = name
 
-    return recognized_label, max_similarity
+    return recognized_label, max_similarity if max_similarity > SIMILARITY_THRESHOLD else 0
 # Valid combinations of backends and targets
 backend_target_pairs = [
     [cv2.dnn.DNN_BACKEND_OPENCV, cv2.dnn.DNN_TARGET_CPU],
@@ -186,8 +198,8 @@ with open('../face_recognition/face_embeddings.pkl', 'rb') as f:
 # Inisialisasi video stream
 print("[INFO] starting video stream...")
 # Inisialisasi video stream
-vs = cv2.VideoCapture(0, cv2.CAP_DSHOW)
-TIMEOUT_DURATION = 0.5 * 60  # 5 menit dalam detik
+vs = cv2.VideoCapture(1, cv2.CAP_DSHOW)
+TIMEOUT_DURATION = 5
 
 time.sleep(2.0)
 fps = FPS().start()
@@ -195,7 +207,7 @@ fps = FPS().start()
 # Inisialisasi centroid tracker
 ct = CentroidTracker()
 # Centroid tracker untuk melacak object person
-person_track_times = defaultdict(lambda: {'entry_time': None, 'last_seen': None, 'recognized_face': None})
+person_track_times = defaultdict(lambda: {'entry_time': None, 'last_seen': None, 'recognized_face': None, 'recognized_face_new': None, 'similarities' :None})
 
 # Loop melalui frame video
 while True:
@@ -216,6 +228,7 @@ while True:
     net.setInput(blob)
     detections = net.forward()
     rects = []
+    
 
     for i in np.arange(0, detections.shape[2]):
         confidence = detections[0, 0, i, 2]
@@ -232,7 +245,6 @@ while True:
                 y = startY - 15 if startY - 15 > 15 else startY + 15
                 cv2.putText(frame, label, (startX, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, COLORS[idx], 2)
 
-    objects = ct.update(rects)
 
     for face in faces:
         x, y, w, h, conf = face[:5].astype(int)
@@ -247,28 +259,92 @@ while True:
 
         # Lakukan pengenalan wajah
         recognized_label, similarity = recognize_face(face_embedding, known_face_embeddings)
+        # pastikan person id hanya untuk satu wajah saja
+        # jika wajahnya berbeda maka akan dianggap sebagai person id yang berbed
+        
+        
+
+        # buat agar selain unknown, kondisi nya harus wajah yang ter rekognisi benar benar milik wajah 1 orang
+        
+        # Tambahkan threshold jumlah frame berturut-turut untuk stabilitas pengenalan
+        STABILITY_THRESHOLD = 0
+        
 
         if recognized_label != "Unknown":
+            objects = ct.update(rects, [recognized_label])
+            print(objects )
             for objectID, centroid in objects.items():
-                person_track_times[objectID]['recognized_face'] = recognized_label
+                if objectID not in person_track_times:
+                # Initialize tracking data for the new object
+                    person_track_times[objectID] = {
+                        'recognized_face': recognized_label,
+                        'similarities': similarity,
+                        'entry_time': time.time(),
+                        'last_seen': time.time(),
+                        'stability_count': 0,
+                        'recognized_face_new': recognized_label
+                    }
+                else:
+                    # Update stability count if the recognized label matches the last recorded one
+                    if recognized_label == person_track_times[objectID]['recognized_face_new']:
+                        person_track_times[objectID]['stability_count'] += 1
+                    else:
+                        # Reset stability count if the recognized label changes
+                        person_track_times[objectID]['stability_count'] = 0
+
+                    # Update the recognized label only if the stability count meets the threshold
+                    if person_track_times[objectID]['stability_count'] >= STABILITY_THRESHOLD:
+                        person_track_times[objectID]['recognized_face'] = recognized_label
+                        person_track_times[objectID]['recognized_face_new'] = recognized_label
+                        person_track_times[objectID]['last_seen'] = time.time()
+                    else:
+                        # If the stability threshold is not met, keep the previous recognized label
+                        recognized_label = person_track_times[objectID]['recognized_face']
+
+                # Update the time when the person was last seen
                 person_track_times[objectID]['last_seen'] = time.time()
 
-                if person_track_times[objectID]['entry_time'] is None:
-                    person_track_times[objectID]['entry_time'] = time.time()
 
         # Tampilkan label pengenalan wajah pada frame
         cv2.putText(frame, f"{recognized_label} ({similarity:.2f})", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
-
-    current_time = time.time()
-    for objectID in list(person_track_times.keys()):
-        last_seen = person_track_times[objectID]['last_seen']
         
-        # Jika person sudah tidak terdeteksi dalam waktu yang ditentukan (5 menit)
-        if current_time - last_seen > TIMEOUT_DURATION:
-            print(f"Person {objectID} name : {person_track_times[objectID]['recognized_face']} keluar ruangan, total waktu: {current_time - person_track_times[objectID]['entry_time']} detik.")
-            del person_track_times[objectID]
-        else:
-            print(f"Person id {objectID} name : {person_track_times[objectID]['recognized_face']} masih di dalam ruangan, terakhir terdeteksi {current_time - last_seen} detik yang lalu.")
+    
+
+    # current_time = time.time()
+    # last_seen = person_track_times[objectID]['last_seen']
+    # for objectID in list(person_track_times.keys()):
+        
+    #     # Jika orang sudah dikenali sebelumnya, cek apakah orang sudah dicatat masuk
+    #     if last_seen is not None and person_track_times[objectID].get('has_entered', False) is False:
+    #         print(f"Person {objectID} name : {person_track_times[objectID]['recognized_face_new']} masuk ruangan.")
+    #         person_track_times[objectID]['has_entered'] = True
+    #         person_track_times[objectID]['has_exited'] = False  # Reset exit status saat orang terdeteksi kembali
+
+    #     # Jika orang tidak terdeteksi dalam waktu yang ditentukan
+    #     if last_seen is not None and (current_time - last_seen) >= TIMEOUT_DURATION:
+    #         if person_track_times[objectID].get('has_exited', False) is False:
+    #             print(f"Person {objectID} name : {person_track_times[objectID]['recognized_face_new']} keluar ruangan, total waktu:{current_time - person_track_times[objectID]['entry_time']}  detik.")
+    #             person_track_times[objectID]['has_exited'] = True  # Tandai bahwa orang telah keluar
+    #             del person_track_times[objectID]  # Hapus setelah status keluar
+    #     # Cetak status deteksi orang di dalam ruangan, jika tidak pernah keluar
+    #     else:
+    #         if last_seen is not None and person_track_times[objectID].get('has_exited') is False:
+               
+    #            print(f"Person id {objectID} name : {person_track_times[objectID]['recognized_face_new']} masih di dalam ruangan, terakhir terdeteksi {current_time - person_track_times[objectID]['entry_time']} detik yang lalu.")
+    
+    
+    # current_time = time.time()
+    # for objectID in list(person_track_times.keys()):
+    #     last_seen = person_track_times[objectID]['last_seen']
+        
+    #     # Check if the person is still inside the room
+    #     if last_seen is not None and (current_time - last_seen) < TIMEOUT_DURATION:
+    #         print(f"Person id {objectID} name : {person_track_times[objectID]['recognized_face']} masih di dalam ruangan, terakhir terdeteksi {current_time - person_track_times[objectID]['entry_time']} detik yang lalu.")
+    #     else:
+    #         # If the person is no longer detected within the timeout duration
+    #         print(f"Person {objectID} name : {person_track_times[objectID]['recognized_face']} keluar ruangan, total waktu: {current_time - person_track_times[objectID]['entry_time']} detik.")
+    #         del person_track_times[objectID]  # Remove the person from tracking
+
 
     cv2.imshow("Frame", frame)
     key = cv2.waitKey(1) & 0xFF
