@@ -102,7 +102,7 @@ detector = YuNet(modelPath='../face_detection/face_detection_yunet_2023mar.onnx'
 
 
 # Load known face embeddings
-with open('../face_recognition/face_embeddings.pkl', 'rb') as f:
+with open('../face_recognition/face_embeddings_new.pkl', 'rb') as f:
     known_face_embeddings = pickle.load(f)
 
 print("[INFO] loading model...")
@@ -123,28 +123,32 @@ tracker = DeepSort(
 )
 # Inisialisasi video stream 
 print("[INFO] starting video stream...")
-vs = cv2.VideoCapture(0)
+cap1 = cv2.VideoCapture(4) #kamera person
+cap2 = cv2.VideoCapture(0) #kamera face
 time.sleep(2.0)
 fps = FPS().start()
 
 # Mulai menghitung waktu secara manual
 start_time = time.time()
+id_face_recognition = {}
+id_face = 0
 id_to_label = {}
 enter_time = {}  # Untuk mencatat waktu masuk
 last_seen_time = {}  # Untuk mencatat waktu terakhir terlihat
 # Ambang batas untuk menganggap seseorang keluar (dalam detik)
 EXIT_THRESHOLD = 5  # 
-# Loop melalui frame video
+# Loop melalui frame1 video
 while True:
-    ret, frame = vs.read()
-    if not ret:
+    ret, frame1 = cap1.read()
+    ret2, frame2 = cap2.read()
+    if not ret or not ret2:
         break
   
-    frame = imutils.resize(frame, width=920)
-    (h, w) = frame.shape[:2]
+    frame1 = imutils.resize(frame1, width=920)
+    (h, w) = frame1.shape[:2]
 
-    # Membuat blob dari frame
-    blob = cv2.dnn.blobFromImage(cv2.resize(frame, (300, 300)),
+    # Membuat blob dari frame1
+    blob = cv2.dnn.blobFromImage(cv2.resize(frame1, (300, 300)),
                                  0.007843, (300, 300), 127.5)
 
     net.setInput(blob)
@@ -157,7 +161,7 @@ while True:
     for i in np.arange(0, detections.shape[2]):
         confidence = detections[0, 0, i, 2]
 
-        if confidence > args["confidence"]:  
+        if confidence > args["confidence"]:  # Sesuaikan threshold confidence sesuai kebutuhan Anda
             idx = int(detections[0, 0, i, 1])
 
             if idx == PERSON_CLASS_ID:
@@ -168,15 +172,13 @@ while True:
                 detection_scores.append(confidence)
 
                 label = "{}: {:.2f}%".format(CLASSES[idx], confidence * 100)
-                cv2.rectangle(frame, (startX, startY), (endX, endY), (0, 0, 255), 2)
+                cv2.rectangle(frame1, (startX, startY), (endX, endY), (0, 0, 255), 2)
                 y = startY - 15 if startY - 15 > 15 else startY + 15
-                cv2.putText(frame, label, (startX, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+                cv2.putText(frame1, label, (startX, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
                 
                 
     # Konversi deteksi ke array NumPy
-    detection_boxes =  np.array([
-    [(x1 + x2) / 2, (y1 + y2) / 2, (x2 - x1), (y2 - y1)] for (x1, y1, x2, y2) in detection_boxes
-])
+    detection_boxes =  np.array([[(x1 + x2) / 2, (y1 + y2) / 2, (x2 - x1), (y2 - y1)] for (x1, y1, x2, y2) in detection_boxes])
     detection_scores = np.array(detection_scores)
     oids = None
     if not oids:
@@ -184,64 +186,58 @@ while True:
             
     # Tracking menggunakan DeepSORT
     if len(detection_boxes) > 0 and len(detection_scores) > 0:
-        trackers = tracker.update(detection_boxes, detection_scores, oids, frame)
-    # print(f"Trackers: {trackers}")
-        for track in trackers:
-            track_id = int(track[4])  # Dapatkan ID dari DeepSORT
-            startX, startY, width, height = track[:4]
-            # print(f"DeepSORT Detected Box: {startX, startY, width, height}")
-            endX, endY = startX + width, startY + height
-            
-            # Deteksi wajah menggunakan YuNet
-            detector.setInputSize((frame.shape[1], frame.shape[0]))
-            faces = detector.infer(frame)
-            for face in faces:
-                x, y, w, h, conf = face[:5].astype(int)
-                if startX <= x <= endX and startY <= y <= endY:
-                    # Pastikan bounding box valid sebelum melakukan face recognition
-                    if x < 0 or y < 0 or x + w > frame.shape[1] or y + h > frame.shape[0]:
-                        continue
-                    
-                    face_roi = frame[y:y+h, x:x+w]
-                    if face_roi.size == 0 or w < 10 or h < 10:
-                        continue
-                    
-                    face_embedding = recognizer.infer(frame, face).flatten()
-                    if face_embedding.shape != (128,):  # Ganti dengan dimensi embedding yang sesuai
-                        continue
+        trackers = tracker.update(detection_boxes, detection_scores, oids, frame1)   
+        
+       
+    # Deteksi wajah menggunakan YuNet
+    detector.setInputSize((frame2.shape[1], frame2.shape[0]))
+    faces = detector.infer(frame2)
+    for face in faces:
+        x, y, w, h, conf = face[:5].astype(int)
+        
+            # Pastikan bounding box valid sebelum melakukan face recognition
+        if x < 0 or y < 0 or x + w > frame2.shape[1] or y + h > frame2.shape[0]:
+            continue
+        
+        face_roi = frame2[y:y+h, x:x+w]
+        if face_roi.size == 0 or w < 10 or h < 10:
+            continue
+        
+        face_embedding = recognizer.infer(frame2, face).flatten()
+        if face_embedding.shape != (128,):  # Ganti dengan dimensi embedding yang sesuai
+            continue
 
-                    # Lakukan pengenalan wajah
-                    recognized_label, similarity = recognize_face(face_embedding, known_face_embeddings)
-                    
-                    # Jika wajah dikenali dan ID belum memiliki label, tambahkan ke dictionary
-                    if similarity > SIMILARITY_THRESHOLD:
-                        # Cek apakah ID belum memiliki label, tambahkan ke dictionary
-                        if track_id not in id_to_label:
-                            id_to_label[track_id] = recognized_label
-                            enter_time[track_id] = time.time()  # Catat waktu masuk
+        # Lakukan pengenalan wajah
+        recognized_label, similarity = recognize_face(face_embedding, known_face_embeddings)
+        
+        if similarity > SIMILARITY_THRESHOLD:
+            for track in trackers:
+                track_id = int(track[4])
+                tx1, ty1, tw, th = map(int, track[:4])
+                # if tx1 <= x <= tx1 + tw and ty1 <= y <= ty1 + th:
+                if track_id not in id_to_label:
+                    id_to_label[track_id] = recognized_label
+                    enter_time[track_id] = time.time()
+                last_seen_time[track_id] = time.time()
+                
+                cv2.rectangle(frame2, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                cv2.putText(frame2, f"{recognized_label} {similarity:.02f}", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                cv2.rectangle(frame1, (tx1, ty1), (tw, th  ), (0, 255, 0), 2)
+                cv2.putText(frame1, f"ID: {track_id}", (tx1, ty1 - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+        
+                
+                
 
-                    
-                    
-                    label = id_to_label.get(track_id, "Unknown")
-                    cv2.putText(frame, f"{label} ({similarity:.2f})", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
-            # Perbarui waktu terakhir terlihat
-            last_seen_time[track_id] = time.time()
-
-            # Tampilkan ID pada frame
-           
-            cv2.rectangle(frame, (startX, startY), (width, height  ), (0, 255, 0), 2)
-            cv2.putText(frame, f"ID: {track_id}", (startX, startY - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-            
-
-    # Cek apakah ada orang yang sudah keluar berdasarkan waktu terakhir terlihat
+    #Cek apakah ada orang yang sudah keluar berdasarkan waktu terakhir terlihat
     current_time = time.time()
     for track_id in list(last_seen_time.keys()):
-        if current_time - last_seen_time[track_id] > EXIT_THRESHOLD:
-            
+        if current_time - last_seen_time[track_id] > EXIT_THRESHOLD :
+            # Ambil waktu masuk atau setel default ke 0 jika tidak ada
             enter_time_value = enter_time.get(track_id, None)
             if enter_time_value is not None:
                 # Anggap orang sudah keluar
-                print(f"Person ID {track_id} with label {id_to_label.get(track_id, 'Unknown')} has left the room. total time: {current_time - enter_time[track_id]:.2f} seconds")
+                print(f"Person ID {track_id} with label {id_to_label.get(track_id, 'Unknown')} has left the room. total time: {current_time - enter_time_value:.2f} seconds")
+            
             # Hapus ID dari dictionary yang terkait
             last_seen_time.pop(track_id, None)
             enter_time.pop(track_id, None)
@@ -256,10 +252,11 @@ while True:
 
     # Tampilkan FPS yang dihitung manual
     fps_text = "FPS: {:.2f}".format(fps_estimate)
-    cv2.putText(frame, fps_text, (10, 30),
+    cv2.putText(frame1, fps_text, (10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
     
-    cv2.imshow("Frame", frame)
+    cv2.imshow("Person Detection and Tracking (cap1)", frame1)
+    cv2.imshow("Face Recognition (cap2)", frame2)
     key = cv2.waitKey(1) & 0xFF
 
     if key == ord("q"):
@@ -275,4 +272,4 @@ print("[INFO] approx. FPS: {:.2f}".format(fps.fps()))
 
 # Cleanup
 cv2.destroyAllWindows()
-vs.release()  # Gunakan release() untuk VideoCapture
+cap1.release()  # Gunakan release() untuk VideoCapture
