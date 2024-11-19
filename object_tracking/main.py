@@ -13,6 +13,7 @@ import pickle
 # from deep_sort.deep_sort_app import run_deep_sort, DeepSORTConfig
 # from deep_sort.application_util.visualization import cv2
 from deep_sort_pytorch.deep_sort import DeepSort
+from ConsumeApi import PostImageAndData
 
 from os.path import dirname, join
 
@@ -123,6 +124,7 @@ tracker = DeepSort(
 )
 # Inisialisasi video stream 
 print("[INFO] starting video stream...")
+video_path = 'LeftCam.mp4'
 vs = cv2.VideoCapture(0)
 time.sleep(2.0)
 fps = FPS().start()
@@ -134,6 +136,7 @@ enter_time = {}  # Untuk mencatat waktu masuk
 last_seen_time = {}  # Untuk mencatat waktu terakhir terlihat
 # Ambang batas untuk menganggap seseorang keluar (dalam detik)
 EXIT_THRESHOLD = 5  # 
+saved_images = []
 # Loop melalui frame video
 while True:
     ret, frame = vs.read()
@@ -212,7 +215,13 @@ while True:
 
                     # Lakukan pengenalan wajah
                     recognized_label, similarity = recognize_face(face_embedding, known_face_embeddings)
-                    
+
+                    # Define the directory where recognized images will be saved
+                    recognized_dir = "recognized_faces"
+
+                    if not os.path.exists(recognized_dir):
+                        os.makedirs(recognized_dir)
+                    person_crop = frame[startY:startY+height, startX:startX+width]
                     # Jika wajah dikenali dan ID belum memiliki label, tambahkan ke dictionary
                     if similarity > SIMILARITY_THRESHOLD:
                         # Cek apakah ID belum memiliki label, tambahkan ke dictionary
@@ -220,8 +229,16 @@ while True:
                             id_to_label[track_id] = recognized_label
                             enter_time[track_id] = time.time()  # Catat waktu masuk
 
-                    
-                    
+                            # Check if in recognized_faces has recognized_label
+                            if recognized_label in saved_images:
+                                break
+                            else:
+                                saved_images.append(recognized_label)
+                                image_rgb = cv2.cvtColor(person_crop, cv2.COLOR_RGB2BGR)
+                                # PostImageAndData(image_rgb, "A11.2022.14141", recognized_label, track_id)
+                                cv2.imwrite(f"{recognized_dir}/{recognized_label}.jpg", person_crop)
+                                print(f"Person ID {track_id} with label {recognized_label} has entered the room.")
+
                     label = id_to_label.get(track_id, "Unknown")
                     cv2.putText(frame, f"{label} ({similarity:.2f})", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
             # Perbarui waktu terakhir terlihat
@@ -241,6 +258,7 @@ while True:
             enter_time_value = enter_time.get(track_id, None)
             if enter_time_value is not None:
                 # Anggap orang sudah keluar
+                saved_images.remove(id_to_label[track_id])
                 print(f"Person ID {track_id} with label {id_to_label.get(track_id, 'Unknown')} has left the room. total time: {current_time - enter_time[track_id]:.2f} seconds")
             # Hapus ID dari dictionary yang terkait
             last_seen_time.pop(track_id, None)
