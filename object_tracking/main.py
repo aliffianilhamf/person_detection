@@ -1,4 +1,6 @@
 # import the necessary packages
+from typing import Optional
+
 from imutils.video import VideoStream
 from imutils.video import FPS
 import numpy as np
@@ -13,7 +15,8 @@ import pickle
 # from deep_sort.deep_sort_app import run_deep_sort, DeepSORTConfig
 # from deep_sort.application_util.visualization import cv2
 from deep_sort_pytorch.deep_sort import DeepSort
-from ConsumeApi import PostImageAndData
+from datetime import datetime, timezone
+from ConsumeApi import PostPersonDuration, PostDetailPersonDuration, UpdateEndTimePersonDuration
 
 from os.path import dirname, join
 
@@ -72,6 +75,7 @@ def cosine_similarity(embedding1, embedding2):
     return dot_product / (norm1 * norm2)
 
 def recognize_face(face_embedding,known_face_embeddings):
+    global person_name, person_nim
     recognized_label = "Unknown"
     max_similarity = 0
 
@@ -84,8 +88,10 @@ def recognize_face(face_embedding,known_face_embeddings):
                 if similarity > max_similarity:
                     max_similarity = similarity
                     recognized_label = name
+                    person_name = recognized_label.replace("_", " ")[0:-16]
+                    person_nim = recognized_label[-14:]
 
-    return recognized_label, max_similarity if max_similarity > SIMILARITY_THRESHOLD else 0
+    return person_name, person_nim, max_similarity if max_similarity > SIMILARITY_THRESHOLD else 0
 
 
 
@@ -139,6 +145,8 @@ EXIT_THRESHOLD = 5  #
 saved_images = []
 # Loop melalui frame video
 while True:
+    recognized_dir: Optional[str] = None
+    person_name: Optional[str] = None
     ret, frame = vs.read()
     if not ret:
         break
@@ -214,8 +222,7 @@ while True:
                         continue
 
                     # Lakukan pengenalan wajah
-                    recognized_label, similarity = recognize_face(face_embedding, known_face_embeddings)
-
+                    person_name, person_nim, similarity = recognize_face(face_embedding, known_face_embeddings)
                     # Define the directory where recognized images will be saved
                     recognized_dir = "recognized_faces"
 
@@ -226,18 +233,19 @@ while True:
                     if similarity > SIMILARITY_THRESHOLD:
                         # Cek apakah ID belum memiliki label, tambahkan ke dictionary
                         if track_id not in id_to_label:
-                            id_to_label[track_id] = recognized_label
+                            id_to_label[track_id] = person_name
                             enter_time[track_id] = time.time()  # Catat waktu masuk
 
                             # Check if in recognized_faces has recognized_label
-                            if recognized_label in saved_images:
+                            if person_name in saved_images:
                                 break
                             else:
-                                saved_images.append(recognized_label)
+                                saved_images.append(person_name)
                                 image_rgb = cv2.cvtColor(person_crop, cv2.COLOR_RGB2BGR)
-                                # PostImageAndData(image_rgb, "A11.2022.14141", recognized_label, track_id)
-                                cv2.imwrite(f"{recognized_dir}/{recognized_label}.jpg", person_crop)
-                                print(f"Person ID {track_id} with label {recognized_label} has entered the room.")
+                                PostPersonDuration(person_name)
+                                PostDetailPersonDuration(image_rgb, person_nim, person_name, track_id)
+                                cv2.imwrite(f"{recognized_dir}/{person_name}.jpg", person_crop)
+                                print(f"Person ID {track_id} with label {person_name} has entered the room.")
 
                     label = id_to_label.get(track_id, "Unknown")
                     cv2.putText(frame, f"{label} ({similarity:.2f})", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
@@ -259,7 +267,19 @@ while True:
             if enter_time_value is not None:
                 # Anggap orang sudah keluar
                 saved_images.remove(id_to_label[track_id])
-                print(f"Person ID {track_id} with label {id_to_label.get(track_id, 'Unknown')} has left the room. total time: {current_time - enter_time[track_id]:.2f} seconds")
+                print(saved_images)
+                
+                # cek apkah file ada
+                if os.path.exists(f"{recognized_dir}/{person_name}.jpg"):
+                    os.remove(f"{recognized_dir}/{person_name}.jpg")
+
+                end_time = current_time - enter_time[track_id]
+                # Convert to a datetime object in UTC
+                utc_time = datetime.fromtimestamp(end_time, tz=timezone.utc)
+                iso_format = utc_time.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+                
+                print(f"Person ID {track_id} with label {id_to_label.get(track_id, 'Unknown')} has left the room. total time: {iso_format} seconds")
+                # UpdateEndTimePersonDuration(id_to_label[track_id] + str(track_id), iso_format)
             # Hapus ID dari dictionary yang terkait
             last_seen_time.pop(track_id, None)
             enter_time.pop(track_id, None)
