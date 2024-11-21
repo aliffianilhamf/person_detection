@@ -1,8 +1,10 @@
+import pytz
 import requests
 import cv2
 from PIL import Image
 import numpy as np
 from io import BytesIO
+import datetime 
 
 bearer_token = '5dddc644-2cfa-40f3-aa22-4769ddae6e90'
 
@@ -82,6 +84,8 @@ def UpdateEndTimePersonDuration(track_id, end_time):
         'Authorization': f'Bearer {bearer_token}',  # Interpolating the token
     }
 
+    indo_time= datetime.datetime.now(pytz.timezone('Asia/Jakarta'))
+    formatted_time = indo_time.strftime('%Y-%m-%dT%H:%M:%S')
     # Prepare the data payload
     data = {
         'end_time': end_time

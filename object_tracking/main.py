@@ -1,6 +1,8 @@
 # import the necessary packages
 from typing import Optional
 
+import pytz
+
 from imutils.video import VideoStream
 from imutils.video import FPS
 import numpy as np
@@ -147,6 +149,7 @@ saved_images = []
 while True:
     recognized_dir: Optional[str] = None
     person_name: Optional[str] = None
+    name_file: Optional[str] = None
     ret, frame = vs.read()
     if not ret:
         break
@@ -238,13 +241,16 @@ while True:
 
                             # Check if in recognized_faces has recognized_label
                             if person_name in saved_images:
-                                break
+                                continue
                             else:
                                 saved_images.append(person_name)
                                 image_rgb = cv2.cvtColor(person_crop, cv2.COLOR_RGB2BGR)
+                                name_file = f"{recognized_dir}/{person_name}.jpg"
+                                if name_file in os.listdir(recognized_dir):
+                                    continue
                                 PostPersonDuration(person_name)
                                 PostDetailPersonDuration(image_rgb, person_nim, person_name, track_id)
-                                cv2.imwrite(f"{recognized_dir}/{person_name}.jpg", person_crop)
+                                cv2.imwrite(name_file, person_crop)
                                 print(f"Person ID {track_id} with label {person_name} has entered the room.")
 
                     label = id_to_label.get(track_id, "Unknown")
@@ -273,13 +279,12 @@ while True:
                 if os.path.exists(f"{recognized_dir}/{person_name}.jpg"):
                     os.remove(f"{recognized_dir}/{person_name}.jpg")
 
-                end_time = current_time - enter_time[track_id]
-                # Convert to a datetime object in UTC
-                utc_time = datetime.fromtimestamp(end_time, tz=timezone.utc)
-                iso_format = utc_time.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+                indo_time= datetime.now(pytz.timezone('Asia/Jakarta'))
+                formatted_time = indo_time.strftime('%Y-%m-%dT%H:%M:%S')
                 
-                print(f"Person ID {track_id} with label {id_to_label.get(track_id, 'Unknown')} has left the room. total time: {iso_format} seconds")
-                # UpdateEndTimePersonDuration(id_to_label[track_id] + str(track_id), iso_format)
+                print(f"Person ID {track_id} with label {id_to_label.get(track_id, 'Unknown')} has left the room. total time: {current_time} seconds")
+                UpdateEndTimePersonDuration(f"{id_to_label[track_id]}{track_id}", formatted_time)
             # Hapus ID dari dictionary yang terkait
             last_seen_time.pop(track_id, None)
             enter_time.pop(track_id, None)
