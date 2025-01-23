@@ -6,11 +6,12 @@ import numpy as np
 from io import BytesIO
 import datetime 
 
-bearer_token = '5dddc644-2cfa-40f3-aa22-4769ddae6e90'
+bearer_token = '5be82c8b-3c5d-4de8-ba09-22e5aa4ae97c'
 
 
-def PostPersonDuration(name):
+def PostPersonDuration(name, track_id):
     # Your API endpoint
+    # url = 'httpss://api-indoor-duration.natagw.my.id/person-durations'
     url = 'https://api-indoor-duration.natagw.my.id/person-durations'
 
     # Headers with the Authorization token
@@ -21,8 +22,10 @@ def PostPersonDuration(name):
 
     # Prepare the data payload
     data = {
-        'name': name
+        'name': name + str(track_id)
     }
+    
+    print(data)
 
     # Make the POST request
     response = requests.post(url, json=data, headers=headers)
@@ -33,7 +36,7 @@ def PostPersonDuration(name):
         print("Response:", response.json())  # Adjust as needed
     else:
         print("Request failed with status code:", response.status_code)
-        print("Error message:", response.text)
+        print("Error message PostPersonDuration:", response.text)
 
 
 def PostDetailPersonDuration(image, nim, name, track_id):
@@ -61,6 +64,7 @@ def PostDetailPersonDuration(image, nim, name, track_id):
         'name': name,
         'name_track_id': name + str(track_id)
     }
+    print(data)
 
     # Make the POST request
     response = requests.post(url, headers=headers, data=data, files=files)
@@ -71,7 +75,7 @@ def PostDetailPersonDuration(image, nim, name, track_id):
         print("Response:", response.json())  # Adjust as needed
     else:
         print("Request failed with status code:", response.status_code)
-        print("Error message:", response.text)
+        print("Error message PostDetailPersonDuration:", response.text)
 
 
 def UpdateEndTimePersonDuration(track_id, end_time):
@@ -100,4 +104,4 @@ def UpdateEndTimePersonDuration(track_id, end_time):
         print("Response:", response.json())  # Adjust as needed
     else:
         print("Request failed with status code:", response.status_code)
-        print("Error message:", response.text)
+        print("Error message UpdateEndTimePersonDuration:", response.text)

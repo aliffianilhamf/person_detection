@@ -31,11 +31,11 @@ from sface import SFace
 
 # Valid combinations of backends and targets
 backend_target_pairs = [
-    [cv2.dnn.DNN_BACKEND_OPENCV, cv2.dnn.DNN_TARGET_CPU],
+    #[cv2.dnn.DNN_BACKEND_OPENCV, cv2.dnn.DNN_TARGET_CPU],
     [cv2.dnn.DNN_BACKEND_CUDA,   cv2.dnn.DNN_TARGET_CUDA],
     [cv2.dnn.DNN_BACKEND_CUDA,   cv2.dnn.DNN_TARGET_CUDA_FP16],
-    [cv2.dnn.DNN_BACKEND_TIMVX,  cv2.dnn.DNN_TARGET_NPU],
-    [cv2.dnn.DNN_BACKEND_CANN,   cv2.dnn.DNN_TARGET_NPU]
+    #[cv2.dnn.DNN_BACKEND_TIMVX,  cv2.dnn.DNN_TARGET_NPU],
+    #[cv2.dnn.DNN_BACKEND_CANN,   cv2.dnn.DNN_TARGET_NPU]
 ]
 # Argumen parser
 ap = argparse.ArgumentParser()
@@ -47,11 +47,11 @@ ap.add_argument("-c", "--confidence", type=float, default=0.2,
     help="minimum probability to filter weak detections")
 ap.add_argument('--backend_target', '-bt', type=int, default=1,
                     help='''Choose one of the backend-target pair to run this demo:
-                        {:d}: (default) OpenCV implementation + CPU,
+                        #: (default) OpenCV implementation + CPU,
                         {:d}: CUDA + GPU (CUDA),
                         {:d}: CUDA + GPU (CUDA FP16),
-                        {:d}: TIM-VX + NPU,
-                        {:d}: CANN + NPU
+                        #: TIM-VX + NPU,
+                        #: CANN + NPU
                     '''.format(*[x for x in range(len(backend_target_pairs))]))
 args = vars(ap.parse_args())
 
@@ -68,7 +68,7 @@ backend_id = backend_target_pairs[args["backend_target"]][0]
 target_id = backend_target_pairs[args["backend_target"]][1]
 
 # Threshold similarity untuk mengenali wajah
-SIMILARITY_THRESHOLD = 0.6
+SIMILARITY_THRESHOLD = 0.5
 # Fungsi untuk menghitung cosine similarity
 def cosine_similarity(embedding1, embedding2):
     dot_product = np.dot(embedding1, embedding2)
@@ -143,7 +143,7 @@ id_to_label = {}
 enter_time = {}  # Untuk mencatat waktu masuk
 last_seen_time = {}  # Untuk mencatat waktu terakhir terlihat
 # Ambang batas untuk menganggap seseorang keluar (dalam detik)
-EXIT_THRESHOLD = 5  # 
+EXIT_THRESHOLD = 60  # 
 saved_images = []
 # Loop melalui frame video
 while True:
@@ -154,7 +154,7 @@ while True:
     if not ret:
         break
   
-    frame = imutils.resize(frame, width=920)
+    frame = imutils.resize(frame, width=720)
     (h, w) = frame.shape[:2]
 
     # Membuat blob dari frame
@@ -248,13 +248,13 @@ while True:
                                 name_file = f"{recognized_dir}/{person_name}.jpg"
                                 if name_file in os.listdir(recognized_dir):
                                     continue
-                                PostPersonDuration(person_name)
+                                PostPersonDuration(person_name, track_id)
                                 PostDetailPersonDuration(image_rgb, person_nim, person_name, track_id)
                                 cv2.imwrite(name_file, person_crop)
                                 print(f"Person ID {track_id} with label {person_name} has entered the room.")
 
-                    label = id_to_label.get(track_id, "Unknown")
-                    cv2.putText(frame, f"{label} ({similarity:.2f})", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+                        label = id_to_label.get(track_id, "Unknown")
+                        cv2.putText(frame, f"{label} ({similarity:.2f})", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
             # Perbarui waktu terakhir terlihat
             last_seen_time[track_id] = time.time()
 
@@ -272,18 +272,22 @@ while True:
             enter_time_value = enter_time.get(track_id, None)
             if enter_time_value is not None:
                 # Anggap orang sudah keluar
-                saved_images.remove(id_to_label[track_id])
-                print(saved_images)
-                
-                # cek apkah file ada
-                if os.path.exists(f"{recognized_dir}/{person_name}.jpg"):
-                    os.remove(f"{recognized_dir}/{person_name}.jpg")
+                # Safely remove an element from the list
+                label = id_to_label.get(track_id)
+
+                if label:
+                    if label in saved_images:
+                        saved_images.remove(label)
+                    else:
+                        print(f"Label '{label}' not found in saved_images")
+                else:
+                    print(f"Track ID {track_id} not found in id_to_label")
 
 
                 indo_time= datetime.now(pytz.timezone('Asia/Jakarta'))
                 formatted_time = indo_time.strftime('%Y-%m-%dT%H:%M:%S')
                 
-                print(f"Person ID {track_id} with label {id_to_label.get(track_id, 'Unknown')} has left the room. total time: {current_time} seconds")
+                print(f"Person ID {track_id} with label {id_to_label.get(track_id, 'Unknown')} has left the room. total time: {current_time} seconds and trackid : {id_to_label[track_id]}{track_id}")
                 UpdateEndTimePersonDuration(f"{id_to_label[track_id]}{track_id}", formatted_time)
             # Hapus ID dari dictionary yang terkait
             last_seen_time.pop(track_id, None)
@@ -302,7 +306,7 @@ while True:
     cv2.putText(frame, fps_text, (10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
     
-    cv2.imshow("Frame", frame)
+    cv2.imshow("Result of Person Detection and Face Recognition", frame)
     key = cv2.waitKey(1) & 0xFF
 
     if key == ord("q"):
