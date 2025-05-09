@@ -188,8 +188,8 @@ with open('../face_recognition/face_embeddings.pkl', 'rb') as f:
 # Inisialisasi video stream
 print("[INFO] starting video stream...")
 # Inisialisasi video stream
-vs = cv2.VideoCapture(0, cv2.CAP_DSHOW)
-TIMEOUT_DURATION = 0.5 * 60  # 5 menit dalam detik
+vs = cv2.VideoCapture(1, cv2.CAP_DSHOW)
+TIMEOUT_DURATION = 5  # 5 menit dalam detik
 
 time.sleep(2.0)
 fps = FPS().start()
@@ -266,11 +266,11 @@ while True:
         last_seen = person_track_times[objectID]['last_seen']
 
         # Jika person sudah tidak terdeteksi dalam waktu yang ditentukan (5 menit)
-        if current_time - last_seen > TIMEOUT_DURATION:
-            print(f"Person {objectID} keluar ruangan, total waktu: {current_time - person_track_times[objectID]['entry_time']} detik.")
+        if last_seen is not None and ( current_time - last_seen )> TIMEOUT_DURATION:
+            print(f"Person {person_track_times[objectID]['recognized_face']} keluar ruangan, total waktu: {current_time - person_track_times[objectID]['entry_time']} detik.")
             del person_track_times[objectID]
         else:
-            print(f"Person {objectID} masih di dalam ruangan, terakhir terdeteksi {current_time - last_seen} detik yang lalu.")
+            print(f"Person {person_track_times[objectID]['recognized_face']} masih di dalam ruangan, terakhir terdeteksi {current_time - person_track_times[objectID]['entry_time']} detik yang lalu.")
 
     cv2.imshow("Frame", frame)
     key = cv2.waitKey(1) & 0xFF
