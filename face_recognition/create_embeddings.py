@@ -71,9 +71,69 @@ if __name__ == '__main__':
 
 
 # Fungsi untuk mengekstrak embeddings
-def extract_embeddings(dataset_path):
-    known_face_embeddings = {}
+def extract_embeddings(dataset_path, recognizer=None, detector=None):
+    CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+    embeddings_path = os.path.join(CURRENT_DIR, 'face_embeddings.pkl')
+    # embeddings_path = 'face_recognition/face_embeddings.pkl'
+    if os.path.exists(embeddings_path):
+        with open(embeddings_path, 'rb') as f:
+            known_face_embeddings = pickle.load(f)
+    else:
+        known_face_embeddings = {}
+        
+    any_embedding_saved = False
     
+    for person_name in os.listdir(dataset_path):
+        person_path = os.path.join(dataset_path, person_name)
+        
+        if not os.path.isdir(person_path):
+            continue
+        
+        embeddings = []
+        print(f"Proses embedding untuk: {person_name}")
+        
+        for image_name in os.listdir(person_path):
+            image_path = os.path.join(person_path, image_name)
+            if not image_path.lower().endswith(('.jpg', '.jpeg', '.png')):
+                continue
+            
+            img = cv.imread(image_path)
+            
+            if img is None:
+                print(f"Gagal membaca gambar: {image_path}")
+                continue
+            # img = cv.resize(np.zeros((320, 320, 3), dtype=np.uint8), (320, 320))
+            img = cv.resize(img, (320, 320))  # Resize gambar ke ukuran yang sesuai
+            h, w, _ = img.shape
+
+            # Inference
+            detector.setInputSize([w, h])
+            # Deteksi wajah menggunakan SFace
+            faces = detector.infer(img)
+            
+            if faces.shape[0] > 0:  # Pastikan ada wajah terdeteksi
+                face = faces[0][:4]  # Ambil bounding box wajah
+                embedding = recognizer.infer(img, face).flatten()  # Ekstrak embedding
+                embeddings.append(embedding)
+                print(f"Embedding berhasil untuk gambar: {image_name}")
+            else:
+                print(f"Tidak ada wajah terdeteksi dalam gambar: {image_name}")
+        
+        if embeddings:
+            known_face_embeddings[person_name] = embeddings
+            print(f"Proses embedding selesai untuk: {person_name} dengan {len(embeddings)} embedding(s) ditemukan.")
+            with open(embeddings_path, 'wb') as f:
+                pickle.dump(known_face_embeddings, f)
+                print(f"Embeddings berhasil disimpan ke {embeddings_path}")
+            any_embedding_saved = True
+        else:
+            print(f"Tidak ada embedding yang berhasil untuk: {person_name}") 
+    
+    return any_embedding_saved
+    
+def local_extract_embeddings(dataset_path):
+    known_face_embeddings = {}
+    print(os.listdir(dataset_path))
     for person_name in os.listdir(dataset_path):
         person_path = os.path.join(dataset_path, person_name)
         
@@ -92,6 +152,7 @@ def extract_embeddings(dataset_path):
             if img is None:
                 print(f"Gagal membaca gambar: {image_path}")
                 continue
+            # img = cv.resize(np.zeros((320, 320, 3), dtype=np.uint8), (320, 320))
             h, w, _ = img.shape
 
             # Inference
@@ -108,19 +169,20 @@ def extract_embeddings(dataset_path):
                 print(f"Tidak ada wajah terdeteksi dalam gambar: {image_name}")
         
         if embeddings:
-            known_face_embeddings[person_name] = embeddings  # Simpan embeddings untuk orang tersebut
+            known_face_embeddings[person_name] = embeddings
             print(f"Proses embedding selesai untuk: {person_name} dengan {len(embeddings)} embedding(s) ditemukan.")
         else:
             print(f"Tidak ada embedding yang berhasil untuk: {person_name}") 
     
     return known_face_embeddings
+    
 
 # Ekstrak embeddings dari dataset
-dataset_path = 'ug'  # Ganti dengan path dataset kamu
-known_face_embeddings = extract_embeddings(dataset_path)
+# dataset_path = 'ug'  # Ganti dengan path dataset kamu
+# known_face_embeddings = local_extract_embeddings(dataset_path)
 
-# Simpan embeddings menggunakan pickle
-with open('face_embeddings.pkl', 'wb') as f:
-    pickle.dump(known_face_embeddings, f)
+# # Simpan embeddings menggunakan pickle
+# with open('face_embeddings.pkl', 'wb') as f:
+#     pickle.dump(known_face_embeddings, f)
 
-print("Embeddings wajah berhasil disimpan.")
+# print("Embeddings wajah berhasil disimpan.")

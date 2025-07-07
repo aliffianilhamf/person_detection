@@ -1,1 +1,0 @@
-from face_recognition.demo import *

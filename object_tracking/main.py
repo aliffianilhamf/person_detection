@@ -18,7 +18,7 @@ import pickle
 # from deep_sort.application_util.visualization import cv2
 from deep_sort_pytorch.deep_sort import DeepSort
 from datetime import datetime, timezone
-from ConsumeApi import PostPersonDuration, PostDetailPersonDuration, UpdateEndTimePersonDuration
+from ConsumeApi import PostPersonDuration, PostDetailPersonDuration, UpdateEndTimePersonDuration,save_and_extract_embeddings
 
 from os.path import dirname, join
 
@@ -27,15 +27,16 @@ sys.path.append(os.path.abspath('../face_detection'))
 from yunet import YuNet
 sys.path.append(os.path.abspath('../face_recognition'))
 from sface import SFace
+from create_embeddings import extract_embeddings
 
 
 # Valid combinations of backends and targets
 backend_target_pairs = [
-    #[cv2.dnn.DNN_BACKEND_OPENCV, cv2.dnn.DNN_TARGET_CPU],
+    [cv2.dnn.DNN_BACKEND_OPENCV, cv2.dnn.DNN_TARGET_CPU],
     [cv2.dnn.DNN_BACKEND_CUDA,   cv2.dnn.DNN_TARGET_CUDA],
     [cv2.dnn.DNN_BACKEND_CUDA,   cv2.dnn.DNN_TARGET_CUDA_FP16],
-    #[cv2.dnn.DNN_BACKEND_TIMVX,  cv2.dnn.DNN_TARGET_NPU],
-    #[cv2.dnn.DNN_BACKEND_CANN,   cv2.dnn.DNN_TARGET_NPU]
+    [cv2.dnn.DNN_BACKEND_TIMVX,  cv2.dnn.DNN_TARGET_NPU],
+    [cv2.dnn.DNN_BACKEND_CANN,   cv2.dnn.DNN_TARGET_NPU]
 ]
 # Argumen parser
 ap = argparse.ArgumentParser()
@@ -45,9 +46,9 @@ ap.add_argument("-m", "--model", required=False,default='MobileNetSSD_deploy.caf
     help="path to Caffe pre-trained model")
 ap.add_argument("-c", "--confidence", type=float, default=0.2,
     help="minimum probability to filter weak detections")
-ap.add_argument('--backend_target', '-bt', type=int, default=1,
+ap.add_argument('--backend_target', '-bt', type=int, default=0,
                     help='''Choose one of the backend-target pair to run this demo:
-                        #: (default) OpenCV implementation + CPU,
+                        {:d}: (default) OpenCV implementation + CPU,
                         {:d}: CUDA + GPU (CUDA),
                         {:d}: CUDA + GPU (CUDA FP16),
                         #: TIM-VX + NPU,
@@ -143,10 +144,22 @@ id_to_label = {}
 enter_time = {}  # Untuk mencatat waktu masuk
 last_seen_time = {}  # Untuk mencatat waktu terakhir terlihat
 # Ambang batas untuk menganggap seseorang keluar (dalam detik)
-EXIT_THRESHOLD = 60  # 
+EXIT_THRESHOLD = 5 
+# 1 menit 
+UPDATE_INTERVAL = 60  # dalam detik
+last_update_time = 0
 saved_images = []
 # Loop melalui frame video
 while True:
+    current_time = time.time()
+    if current_time - last_update_time >= UPDATE_INTERVAL:
+        print("Updating known face embeddings...")
+        save_and_extract_embeddings(recognizer=recognizer, detector=detector)
+        with open('../face_recognition/face_embeddings.pkl', 'rb') as f:
+            known_face_embeddings = pickle.load(f)
+        last_update_time = current_time  # reset waktu setelah update
+    
+    
     recognized_dir: Optional[str] = None
     person_name: Optional[str] = None
     name_file: Optional[str] = None
