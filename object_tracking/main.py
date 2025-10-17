@@ -56,21 +56,18 @@ ap.add_argument('--backend_target', '-bt', type=int, default=0,
                     '''.format(*[x for x in range(len(backend_target_pairs))]))
 args = vars(ap.parse_args())
 
-# Daftar kelas yang benar
 CLASSES = ["background", "aeroplane", "bicycle", "bird", "boat",
            "bottle", "bus", "car", "cat", "chair", "cow", "diningtable",
            "dog", "horse", "motorbike", "person", "pottedplant", "sheep",
            "sofa", "train", "tvmonitor"]
 COLORS = np.random.uniform(0, 255, size=(len(CLASSES), 3))
 
-# Tentukan indeks kelas "person"
 PERSON_CLASS_ID = CLASSES.index("person")  # 15
 backend_id = backend_target_pairs[args["backend_target"]][0]
 target_id = backend_target_pairs[args["backend_target"]][1]
 
 # Threshold similarity untuk mengenali wajah
 SIMILARITY_THRESHOLD = 0.5
-# Fungsi untuk menghitung cosine similarity
 def cosine_similarity(embedding1, embedding2):
     dot_product = np.dot(embedding1, embedding2)
     norm1 = np.linalg.norm(embedding1)
@@ -131,25 +128,26 @@ tracker = DeepSort(
     n_init=2,
     nn_budget=90
 )
-# Inisialisasi video stream 
 print("[INFO] starting video stream...")
 video_path = 'LeftCam.mp4'
 vs = cv2.VideoCapture(0)
 time.sleep(2.0)
 fps = FPS().start()
 
-# Mulai menghitung waktu secara manual
 start_time = time.time()
 id_to_label = {}
 enter_time = {}  # Untuk mencatat waktu masuk
 last_seen_time = {}  # Untuk mencatat waktu terakhir terlihat
+
+unknown_enter_time = {}
+ALARM_THRESHOLD = 5 
 # Ambang batas untuk menganggap seseorang keluar (dalam detik)
 EXIT_THRESHOLD = 5 
 # 1 menit 
 UPDATE_INTERVAL = 60  # dalam detik
 last_update_time = 0
 saved_images = []
-# Loop melalui frame video
+
 while True:
     current_time = time.time()
     if current_time - last_update_time >= UPDATE_INTERVAL:
@@ -222,6 +220,8 @@ while True:
             # Deteksi wajah menggunakan YuNet
             detector.setInputSize((frame.shape[1], frame.shape[0]))
             faces = detector.infer(frame)
+            # gemastik
+            found_face = False
             for face in faces:
                 x, y, w, h, conf = face[:5].astype(int)
                 if startX <= x <= endX and startY <= y <= endY:
@@ -261,13 +261,22 @@ while True:
                                 name_file = f"{recognized_dir}/{person_name}.jpg"
                                 if name_file in os.listdir(recognized_dir):
                                     continue
-                                PostPersonDuration(person_name, track_id)
-                                PostDetailPersonDuration(image_rgb, person_nim, person_name, track_id)
+                                # PostPersonDuration(person_name, track_id)
+                                # PostDetailPersonDuration(image_rgb, person_nim, person_name, track_id)
                                 cv2.imwrite(name_file, person_crop)
                                 print(f"Person ID {track_id} with label {person_name} has entered the room.")
 
                         label = id_to_label.get(track_id, "Unknown")
                         cv2.putText(frame, f"{label} ({similarity:.2f})", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+                        # Gemastik
+                        found_face = True
+                    else:
+                        if track_id not in unknown_enter_time:
+                            unknown_enter_time[track_id] = time.time()
+                        found_face = True
+            if not found_face:
+                unknown_enter_time.pop(track_id, None)
+                        
             # Perbarui waktu terakhir terlihat
             last_seen_time[track_id] = time.time()
 
@@ -279,6 +288,11 @@ while True:
 
     # Cek apakah ada orang yang sudah keluar berdasarkan waktu terakhir terlihat
     current_time = time.time()
+    # Cek alarm untuk orang tidak dikenali
+    for track_id, enter_time_val in list(unknown_enter_time.items()):
+        if current_time - enter_time_val > ALARM_THRESHOLD:
+            print(f"ALARM! Unknown person with track_id {track_id} detected for more than 5 minutes!")
+            unknown_enter_time.pop(track_id, None)  # Hapus agar tidak alarm terus
     for track_id in list(last_seen_time.keys()):
         if current_time - last_seen_time[track_id] > EXIT_THRESHOLD:
             
@@ -301,20 +315,18 @@ while True:
                 formatted_time = indo_time.strftime('%Y-%m-%dT%H:%M:%S')
                 
                 print(f"Person ID {track_id} with label {id_to_label.get(track_id, 'Unknown')} has left the room. total time: {current_time} seconds and trackid : {id_to_label[track_id]}{track_id}")
-                UpdateEndTimePersonDuration(f"{id_to_label[track_id]}{track_id}", formatted_time)
+                # UpdateEndTimePersonDuration(f"{id_to_label[track_id]}{track_id}", formatted_time)
             # Hapus ID dari dictionary yang terkait
             last_seen_time.pop(track_id, None)
             enter_time.pop(track_id, None)
             id_to_label.pop(track_id, None)
             
-    # Update FPS counter
     fps.update()
 
     # Hitung waktu berlalu
     elapsed_time = time.time() - start_time
     fps_estimate = fps._numFrames / elapsed_time
 
-    # Tampilkan FPS yang dihitung manual
     fps_text = "FPS: {:.2f}".format(fps_estimate)
     cv2.putText(frame, fps_text, (10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)

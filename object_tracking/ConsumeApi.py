@@ -12,7 +12,7 @@ import shutil
 sys.path.append(os.path.abspath('../face_recognition'))
 from create_embeddings import extract_embeddings
 
-bearer_token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsInJvbGUiOiJhZG1pbiIsImZ1bGxuYW1lIjoiYWRtaW4iLCJleHAiOjE3NTE5NzI5MzN9.n3l29k1i2Kyel9nGX1vG2Kvz133M8RtG5-CeAb6z_kY'
+bearer_token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGdtYWlsLmNvbSIsInJvbGUiOiJhZG1pbiIsImZ1bGxuYW1lIjoiYWRtaW4iLCJleHAiOjE3NTIzMDkyOTZ9.DiAsTLgOi4rRg0r-4zaVETRlEe5uarg8XXVpnCLeyoQ'
 
 
 def PostPersonDuration(name, track_id):
@@ -106,8 +106,8 @@ def UpdateEndTimePersonDuration(track_id, end_time):
 
     # Check the response
     if response.status_code == 200:
-        print("Request successful!")
-        print("Response:", response.json())  # Adjust as needed
+        print("Request UpdateEndTimePersonDuration successful!")
+        # print("Response:", response.json())  # Adjust as needed
     else:
         print("Request failed with status code:", response.status_code)
         print("Error message UpdateEndTimePersonDuration:", response.text)
@@ -122,14 +122,22 @@ def GetAllAssistant():
     }
     response = requests.get(url, headers=headers)
     # get uuid all assistant when status_embed = false
-    for assistant in response.json()['data']:
-        if not assistant['status_embed']:
-            assistants.append({
+    # cheeck if response is successful
+    # for assistant in response.json()['data']:
+    #     if not assistant['status_embed']:
+    #         assistants.append({
+    #                 'uid': assistant['uid'],
+    #                 'image': assistant['image'],
+    #                 'name': f"{assistant['fullname'].replace(' ', '_')}__{assistant['nim']}"
+    #             })
+    if response.status_code == 200:
+        for assistant in response.json()['data']:
+            if not assistant['status_embed']:
+                assistants.append({
                     'uid': assistant['uid'],
                     'image': assistant['image'],
                     'name': f"{assistant['fullname'].replace(' ', '_')}__{assistant['nim']}"
                 })
-    if response.status_code == 200:
         # print("Request successful!")
         # print("Response:", response.json())  # Adjust as needed
         return assistants
