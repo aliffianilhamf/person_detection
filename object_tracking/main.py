@@ -269,11 +269,11 @@ while True:
                         label = id_to_label.get(track_id, "Unknown")
                         cv2.putText(frame, f"{label} ({similarity:.2f})", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
                         # Gemastik
-                        found_face = True
+                        # found_face = True
                     else:
                         if track_id not in unknown_enter_time:
                             unknown_enter_time[track_id] = time.time()
-                        found_face = True
+                        # found_face = True
             if not found_face:
                 unknown_enter_time.pop(track_id, None)
                         
@@ -288,11 +288,11 @@ while True:
 
     # Cek apakah ada orang yang sudah keluar berdasarkan waktu terakhir terlihat
     current_time = time.time()
-    # Cek alarm untuk orang tidak dikenali
-    for track_id, enter_time_val in list(unknown_enter_time.items()):
-        if current_time - enter_time_val > ALARM_THRESHOLD:
-            print(f"ALARM! Unknown person with track_id {track_id} detected for more than 5 minutes!")
-            unknown_enter_time.pop(track_id, None)  # Hapus agar tidak alarm terus
+    # # Cek alarm untuk orang tidak dikenali
+    # for track_id, enter_time_val in list(unknown_enter_time.items()):
+    #     if current_time - enter_time_val > ALARM_THRESHOLD:
+    #         print(f"ALARM! Unknown person with track_id {track_id} detected for more than 5 minutes!")
+    #         unknown_enter_time.pop(track_id, None)  # Hapus agar tidak alarm terus
     for track_id in list(last_seen_time.keys()):
         if current_time - last_seen_time[track_id] > EXIT_THRESHOLD:
             
